@@ -1,0 +1,14 @@
+# block_fig 以外の block_ 系クラスのうち、図版内文字の二次検出(領域を切り出して
+# 再検出する処理)の対象から除外したいクラス名を列挙する。
+# block_ad, block_table は常に除外されるため、ここに指定する必要はない。
+#
+# 例:
+exclude:
+#  - block_fig
+  - block_pillar
+  - block_folio
+  - block_rubi
+  - block_chart
+  - block_eqn
+  - block_cfm
+  - block_eng

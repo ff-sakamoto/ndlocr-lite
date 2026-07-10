@@ -150,6 +150,65 @@ def process_detector(detector,inputname:str,npimage:np.ndarray,outputpath:str,is
         pil_image.save(output_filepath)
     return detections,classeslist
 
+
+# block_ad, block_table は既存のテキストブロック関連付け処理(get_relationship_rect)で
+# 内部の文字行が別途拾われるため、定義ファイルの指定に関わらず常に除外する。
+BLOCK_CLASSES_ALWAYS_EXCLUDED_FROM_SUBDETECT = {"block_ad", "block_table"}
+
+def load_ocr_figures_exclude_classes(config_path: str) -> set:
+    """二次検出の対象から追加で除外する block_ クラス名を定義ファイル(yaml)から読み込む。
+    ファイルが存在しない場合は追加除外なしとして扱う。
+    """
+    if not config_path or not os.path.exists(config_path):
+        return set()
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = safe_load(f) or {}
+    return set(data.get("exclude") or [])
+
+def detect_lines_in_figures(detector, classeslist: list, npimage: np.ndarray, detections: list, extra_exclude_classes: set = frozenset()) -> list:
+    """block_*(図版・柱・ノンブル・ルビ・組織図・数式・化学式・欧文等)として検出された
+    領域を切り出し、再度検出器にかけて領域内に含まれるline_*系(本文・キャプション等)の
+    文字領域だけを抽出する。切り出した画像は検出器の入力解像度に合わせて再スケールされる
+    ため、ページ全体を一度に検出した場合より小さな文字を拾いやすくなる。
+    """
+    exclude_classes = BLOCK_CLASSES_ALWAYS_EXCLUDED_FROM_SUBDETECT | set(extra_exclude_classes)
+    target_cls_ids = [
+        i for i, cls in enumerate(classeslist)
+        if cls.startswith("block_") and cls not in exclude_classes
+    ]
+    if not target_cls_ids:
+        return []
+    target_cls_ids = set(target_cls_ids)
+    img_h, img_w = npimage.shape[:2]
+    found = []
+    for det in detections:
+        if det["class_index"] not in target_cls_ids:
+            continue
+        xmin, ymin, xmax, ymax = [int(v) for v in det["box"]]
+        xmin, ymin = max(xmin, 0), max(ymin, 0)
+        xmax, ymax = min(xmax, img_w), min(ymax, img_h)
+        fig_w, fig_h = xmax - xmin, ymax - ymin
+        if fig_w <= 0 or fig_h <= 0:
+            continue
+        crop = npimage[ymin:ymax, xmin:xmax]
+        sub_detections = detector.detect(crop)
+        for sub in sub_detections:
+            sub_cls_name = classeslist[sub["class_index"]] if 0 <= sub["class_index"] < len(classeslist) else None
+            if sub_cls_name is None or not sub_cls_name.startswith("line_"):
+                continue
+            sx1, sy1, sx2, sy2 = [int(v) for v in sub["box"]]
+            sx1, sy1 = max(sx1, 0), max(sy1, 0)
+            sx2, sy2 = min(sx2, fig_w), min(sy2, fig_h)
+            if sx2 <= sx1 or sy2 <= sy1:
+                continue
+            found.append({
+                "class_index": sub["class_index"],
+                "confidence": sub["confidence"],
+                "box": [sx1 + xmin, sy1 + ymin, sx2 + xmin, sy2 + ymin],
+                "pred_char_count": sub.get("pred_char_count", 100.0),
+            })
+    return found
+
 def _run_ocr_on_image_array(
     detector,
     recognizer30,
@@ -159,6 +218,8 @@ def _run_ocr_on_image_array(
     img: np.ndarray,
     outputpath: str,
     save_viz: bool = False,
+    ocr_figures: bool = True,
+    ocr_figures_exclude_classes: set = frozenset(),
 ):
     img_h, img_w = img.shape[:2]
     detections, classeslist = process_detector(
@@ -168,6 +229,8 @@ def _run_ocr_on_image_array(
         outputpath=outputpath,
         issaveimg=save_viz,
     )
+    if ocr_figures:
+        detections = detections + detect_lines_in_figures(detector, classeslist, img, detections, ocr_figures_exclude_classes)
     resultobj = [dict(), dict()]
     resultobj[0][0] = list()
     for i in range(17):
@@ -416,6 +479,7 @@ def process_pdf_documents(args, pdf_paths: list[str]):
     recognizer50 = get_recognizer(args=args, weights_path=args.rec_weights50)
 
     render_scale = max(float(getattr(args, "pdf_render_dpi", 150)), 1.0) / 72.0
+    ocr_figures_exclude_classes = load_ocr_figures_exclude_classes(getattr(args, "ocr_figures_exclude_config", None))
 
     for pdf_path in pdf_paths:
         start = time.time()
@@ -447,6 +511,8 @@ def process_pdf_documents(args, pdf_paths: list[str]):
                 img=img,
                 outputpath=args.output,
                 save_viz=args.viz,
+                ocr_figures=getattr(args, "ocr_figures", True),
+                ocr_figures_exclude_classes=ocr_figures_exclude_classes,
             )
             page_results.append(page_result)
             all_json_contents.append(page_result["json_lines"])
@@ -529,7 +595,8 @@ def process(args):
     recognizer50=get_recognizer(args=args,weights_path=args.rec_weights50)
     tatelinecnt=0
     alllinecnt=0
-    
+    ocr_figures_exclude_classes = load_ocr_figures_exclude_classes(getattr(args, "ocr_figures_exclude_config", None))
+
     for inputpath in inputpathlist:
         ext=inputpath.split(".")[-1]
         pil_image = Image.open(inputpath).convert('RGB')
@@ -541,6 +608,8 @@ def process(args):
         imgname=os.path.basename(inputpath)
         img_h,img_w=img.shape[:2]
         detections,classeslist=process_detector(detector,inputname=imgname,npimage=img,outputpath=args.output,issaveimg=args.viz)
+        if getattr(args, "ocr_figures", True):
+            detections = detections + detect_lines_in_figures(detector, classeslist, img, detections, ocr_figures_exclude_classes)
         e1=time.time()
         resultobj=[dict(),dict()]
         resultobj[0][0]=list()
@@ -685,6 +754,8 @@ def main():
     parser.add_argument("--device", type=str, required=False, help="Device use (cpu or cuda)", choices=["cpu", "cuda"], default="cpu")
     parser.add_argument("--enable-tcy", action="store_true", dest="enable_tcy", default=False, help="Enable tate-chuu-yoko (縦中横) detection for vertical text (e.g. newspaper OCR)")
     parser.add_argument("--json-only", action="store_true", help="Disable .xml and .txt output and only output JSON")
+    parser.add_argument("--no-ocr-figures", action="store_false", dest="ocr_figures", default=True, help="Disable OCR of figure/illustration regions (図版) and restore the legacy behavior where they are only output as position-only BLOCK elements")
+    parser.add_argument("--ocr-figures-exclude-config", type=str, required=False, help="Path to yaml file listing additional block_ class names to exclude from figure OCR sub-detection (block_ad, block_table are always excluded)", default=str(base_dir / "config" / "ocr_figures_exclude.yaml"))
     args, remaining = parser.parse_known_args()
     if args.enable_tcy and remaining:
         from tcy_wrapper import add_tcy_arguments
