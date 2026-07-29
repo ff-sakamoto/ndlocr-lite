@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 from typing import Tuple, List
 import xml.etree.ElementTree as ET
+from onnx_session_cache import create_cached_session
 
 class DEIM:
     def __init__(self,
@@ -37,7 +38,7 @@ class DEIM:
         providers = ['CPUExecutionProvider']
         if self.device.casefold() == "cuda":
             providers = ['CUDAExecutionProvider','CPUExecutionProvider']
-        session = onnxruntime.InferenceSession(self.model_path,opt_session, providers=providers)
+        session = create_cached_session(self.model_path, opt_session, providers, self.device)
         self.session = session
         self.model_inputs = self.session.get_inputs()
         self.input_names = [self.model_inputs[i].name for i in range(len(self.model_inputs))]
