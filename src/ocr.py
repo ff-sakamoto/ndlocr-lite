@@ -562,6 +562,15 @@ def process_pdf_documents(args, pdf_paths: list[str]):
         print("Total PDF calculation time:", time.time() - start)
 
 def process(args):
+    if getattr(args, "build_cache_only", False):
+        print("[INFO] Building ONNX cache only (no OCR)")
+        get_detector(args)
+        get_recognizer(args=args)
+        get_recognizer(args=args, weights_path=args.rec_weights30)
+        get_recognizer(args=args, weights_path=args.rec_weights50)
+        print("[INFO] ONNX cache build complete.")
+        return
+
     rawinputpathlist=[]
     inputpathlist=[]
     pdfpathlist=[]
@@ -737,7 +746,7 @@ def main():
     parser.add_argument("--sourcedir", type=str, required=False, help="Path to image directory")
     parser.add_argument("--sourceimg", type=str, required=False, help="Path to image directory")
     parser.add_argument("--sourcepdf", type=str, required=False, help="Path to source PDF")
-    parser.add_argument("--output", type=str, required=True, help="Path to output directory")
+    parser.add_argument("--output", type=str, required=False, help="Path to output directory")
     parser.add_argument("--viz", type=bool, required=False, help="Save visualized image",default=False)
     parser.add_argument("--pdf-output", type=str, required=False, help="Path to output text-layer PDF")
     parser.add_argument("--pdf-render-dpi", "--pdf-dpi", dest="pdf_render_dpi", type=float, required=False, default=150.0, help="DPI used to render PDF pages for OCR")
@@ -758,7 +767,10 @@ def main():
     parser.add_argument("--json-only", action="store_true", help="Disable .xml and .txt output and only output JSON")
     parser.add_argument("--no-ocr-figures", action="store_false", dest="ocr_figures", default=True, help="Disable OCR of figure/illustration regions (図版) and restore the legacy behavior where they are only output as position-only BLOCK elements")
     parser.add_argument("--ocr-figures-exclude-config", type=str, required=False, help="Path to yaml file listing additional block_ class names to exclude from figure OCR sub-detection (block_ad, block_table are always excluded)", default=str(base_dir / "config" / "ocr_figures_exclude.yaml"))
+    parser.add_argument("--build-cache-only", action="store_true", dest="build_cache_only", default=False, help="Skip OCR and only build the ONNX optimized-model cache")
     args, remaining = parser.parse_known_args()
+    if not args.build_cache_only and not args.output:
+        parser.error("--output is required unless --build-cache-only is specified")
     if args.enable_tcy and remaining:
         from tcy_wrapper import add_tcy_arguments
         tcy_parser = add_tcy_arguments(parser)
