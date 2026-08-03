@@ -2,19 +2,21 @@ import os
 import onnxruntime
 
 
-def _get_cache_dir() -> str:
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    return os.path.join(appdata, "fanfare", "HybridOCR", ".onnx_cache")
+def _get_cache_dir(base_dir: str = None) -> str:
+    if base_dir is None:
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+        base_dir = os.path.join(appdata, "fanfare", "HybridOCR")
+    return os.path.join(base_dir, ".onnx_cache")
 
 
 def create_cached_session(model_path: str, opt_session: onnxruntime.SessionOptions,
-                           providers: list, device: str) -> onnxruntime.InferenceSession:
-    """%APPDATA%\\fanfare\\HybridOCR\\.onnx_cache にグラフ最適化済みモデルをキャッシュし、
-    2回目以降のロードでは最適化パスを省略して高速化する。
+                           providers: list, device: str, cache_dir: str = None) -> onnxruntime.InferenceSession:
+    """<cache_dir>\\.onnx_cache (未指定時は %APPDATA%\\fanfare\\HybridOCR\\.onnx_cache) に
+    グラフ最適化済みモデルをキャッシュし、2回目以降のロードでは最適化パスを省略して高速化する。
     キャッシュの読み書きに失敗した場合は通常ロードにフォールバックする。
     """
     try:
-        cache_dir = _get_cache_dir()
+        cache_dir = _get_cache_dir(cache_dir)
         stem = os.path.splitext(os.path.basename(model_path))[0]
         cache_path = os.path.join(cache_dir, f"{stem}.{device.casefold()}.optimized.onnx")
 

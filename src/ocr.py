@@ -96,7 +96,8 @@ def get_detector(args):
                       score_threshold=args.det_score_threshold,
                       conf_threshold=args.det_conf_threshold,
                       iou_threshold=args.det_iou_threshold,
-                      device=args.device)
+                      device=args.device,
+                      cache_dir=getattr(args, "cache_dir", None))
     return detector
 
 def get_recognizer(args,weights_path=None):
@@ -112,7 +113,7 @@ def get_recognizer(args,weights_path=None):
         charobj=safe_load(f)
     charlist=list(charobj["model"]["charset_train"])
     
-    recognizer = PARSEQ(model_path=weights_path,charlist=charlist,device=args.device)
+    recognizer = PARSEQ(model_path=weights_path,charlist=charlist,device=args.device,cache_dir=getattr(args, "cache_dir", None))
     if getattr(args, 'enable_tcy', False):
         from tcy_wrapper import TateChuYokoWrapper
         tcy_kwargs = {k: v for k, v in vars(args).items() if k.startswith('tcy_') and k != 'enable_tcy' and v is not None}
@@ -752,6 +753,7 @@ def main():
     parser.add_argument("--rec-weights", type=str, required=False, help="Path to parseq-tiny onnx file", default=str(base_dir / "model" / "parseq-ndl-24x768-100-tiny-153epoch-tegaki3-r8data-202604.onnx"))
     parser.add_argument("--rec-classes", type=str, required=False, help="Path to list of class in yaml file", default=str(base_dir / "config" / "NDLmoji.yaml"))
     parser.add_argument("--device", type=str, required=False, help="Device use (cpu or cuda)", choices=["cpu", "cuda"], default="cpu")
+    parser.add_argument("--cache-dir", type=str, required=False, dest="cache_dir", default=None, help="Base directory for the ONNX optimized-model cache (a .onnx_cache subfolder is used). Defaults to %%APPDATA%%\\fanfare\\HybridOCR")
     parser.add_argument("--enable-tcy", action="store_true", dest="enable_tcy", default=False, help="Enable tate-chuu-yoko (縦中横) detection for vertical text (e.g. newspaper OCR)")
     parser.add_argument("--json-only", action="store_true", help="Disable .xml and .txt output and only output JSON")
     parser.add_argument("--no-ocr-figures", action="store_false", dest="ocr_figures", default=True, help="Disable OCR of figure/illustration regions (図版) and restore the legacy behavior where they are only output as position-only BLOCK elements")

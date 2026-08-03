@@ -16,7 +16,8 @@ class DEIM:
                  score_threshold: float = 0.1,
                  conf_threshold: float = 0.1,
                  iou_threshold: float = 0.4,
-                 device: str = "CPU") -> None:
+                 device: str = "CPU",
+                 cache_dir: str = None) -> None:
         self.model_path = model_path
         self.class_mapping_path = class_mapping_path
         self.image_width, self.image_height = original_size
@@ -24,6 +25,7 @@ class DEIM:
         self.score_threshold = score_threshold
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
+        self.cache_dir = cache_dir
         self.colorlist=[(0, 0, 0), (255, 0, 0), (0, 0, 142), (0, 0, 230), (106, 0, 228),
                         (0, 60, 100), (0, 80, 100), (0, 0, 70), (0, 0, 192), (250, 170, 30),
                         (100, 170, 30), (220, 220, 0), (175, 116, 175), (250, 0, 30),(165, 42, 42), (255, 77, 255),(255,0,0)]
@@ -38,7 +40,7 @@ class DEIM:
         providers = ['CPUExecutionProvider']
         if self.device.casefold() == "cuda":
             providers = ['CUDAExecutionProvider','CPUExecutionProvider']
-        session = create_cached_session(self.model_path, opt_session, providers, self.device)
+        session = create_cached_session(self.model_path, opt_session, providers, self.device, self.cache_dir)
         self.session = session
         self.model_inputs = self.session.get_inputs()
         self.input_names = [self.model_inputs[i].name for i in range(len(self.model_inputs))]

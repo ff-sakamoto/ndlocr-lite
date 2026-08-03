@@ -12,12 +12,14 @@ class PARSEQ:
                  model_path: str,
                  charlist: [str],
                  original_size: Tuple[int, int] = (384, 32),
-                 device: str = "CPU") -> None:
+                 device: str = "CPU",
+                 cache_dir: str = None) -> None:
         self.model_path = model_path
         self.charlist = charlist
 
         self.device = device
         self.image_width, self.image_height = original_size
+        self.cache_dir = cache_dir
         self.create_session()
 
     def create_session(self) -> None:
@@ -32,7 +34,7 @@ class PARSEQ:
             opt_session.inter_op_num_threads = 1
         elif self.device.casefold() == "cuda":
             providers = ['CUDAExecutionProvider','CPUExecutionProvider']
-        session = create_cached_session(self.model_path, opt_session, providers, self.device)
+        session = create_cached_session(self.model_path, opt_session, providers, self.device, self.cache_dir)
         self.session = session
         self.model_inputs = self.session.get_inputs()
         self.input_names = [self.model_inputs[i].name for i in range(len(self.model_inputs))]
